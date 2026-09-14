@@ -78,6 +78,24 @@ export type Practice = {
   remembered: number;
   saved: boolean;
 };
+export type Badge = {
+  id: string;
+  category: string;
+  name: string;
+  description: string;
+  achieved: boolean;
+  current: number;
+  threshold: number;
+  progressText: string;
+};
+export type Stats = {
+  hintFreeRate: number | null;
+  rememberedRate: number | null;
+  plays: number;
+  recordings: number;
+  aiLines: number;
+  badges: Badge[];
+};
 export const colors = [
   { name: 'Curtain red', bg: '#8b3a49', ink: '#f1d5a1' },
   { name: 'Forest', bg: '#354b44', ink: '#eddfa9' },

@@ -13,6 +13,7 @@ import {
   GroupView,
   AccountView,
 } from './views';
+import { AchievementsView } from './achievements';
 import { Rehearsal } from './rehearsal';
 import {
   Dialog,
@@ -53,6 +54,7 @@ export type Context = {
   open: (type: string, data?: any) => void;
   saveOffline: () => Promise<void>;
   recordPractice: (lineId: string, kind: string) => Promise<void>;
+  recordSceneComplete: (sceneId: string) => Promise<void>;
   logout: () => Promise<void>;
 };
 export function App({ user, auth }: { user: User; auth: Auth }) {
@@ -243,6 +245,7 @@ export function App({ user, auth }: { user: User; auth: Auth }) {
         audio: 'Record & AI',
         rehearse: 'Rehearsal',
         progress: 'My practice',
+        achievements: 'Achievements',
         group: 'Groups',
         scene: 'Scene setup',
         editor: 'Script editor',
@@ -269,27 +272,34 @@ export function App({ user, auth }: { user: User; auth: Auth }) {
   useEffect(() => {
     if (!online) return;
     act(async () => {
-      const queue = (await offline.get<any[]>(user.uid, 'practice-queue')) || [];
+      const queue =
+        (await offline.get<{ path: string; body: unknown }[]>(user.uid, 'event-queue')) || [];
       for (const event of queue) {
         try {
-          await send('/practice', event);
+          await send(event.path, event.body);
         } catch (e) {
           if (e instanceof ApiError && [403, 404].includes(e.status)) continue;
           throw e;
         }
       }
-      await offline.put(user.uid, 'practice-queue', []);
+      await offline.put(user.uid, 'event-queue', []);
     });
   }, [online]);
-  async function recordPractice(lineId: string, kind: string) {
-    const event = { eventId: crypto.randomUUID(), lineId, kind };
+  async function queueOrSend(path: string, body: unknown) {
     if (!navigator.onLine) {
-      const queue = (await offline.get<any[]>(user.uid, 'practice-queue')) || [];
-      queue.push(event);
-      await offline.put(user.uid, 'practice-queue', queue);
+      const queue =
+        (await offline.get<{ path: string; body: unknown }[]>(user.uid, 'event-queue')) || [];
+      queue.push({ path, body });
+      await offline.put(user.uid, 'event-queue', queue);
       return;
     }
-    await send('/practice', event);
+    await send(path, body);
+  }
+  async function recordPractice(lineId: string, kind: string) {
+    await queueOrSend('/practice', { eventId: crypto.randomUUID(), lineId, kind });
+  }
+  async function recordSceneComplete(sceneId: string) {
+    await queueOrSend('/scenes/' + sceneId + '/complete', { eventId: crypto.randomUUID() });
   }
   async function saveOffline() {
     if (!scene || !script || !me || !data) return;
@@ -363,6 +373,7 @@ export function App({ user, auth }: { user: User; auth: Auth }) {
     open: (type, data) => setModal({ type, data }),
     saveOffline,
     recordPractice,
+    recordSceneComplete,
     logout,
   };
   const navs = [
@@ -370,6 +381,7 @@ export function App({ user, auth }: { user: User; auth: Auth }) {
     ['audio', 'mic', 'Record & AI'],
     ['rehearse', 'play', 'Rehearse'],
     ['progress', 'chart', 'My practice'],
+    ['achievements', 'award', 'Achievements'],
     ['group', 'users', 'Groups'],
   ];
   const active = ['scene', 'editor'].includes(page) ? 'library' : page;
@@ -400,6 +412,7 @@ export function App({ user, auth }: { user: User; auth: Auth }) {
       />
     );
   else if (page === 'account') body = <AccountView ctx={ctx} />;
+  else if (page === 'achievements') body = <AchievementsView ctx={ctx} />;
   else if (!group)
     body = (
       <div className="empty welcome-empty">

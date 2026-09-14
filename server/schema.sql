@@ -64,3 +64,8 @@ CREATE TABLE IF NOT EXISTS jobs (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS jobs_one_active_line ON jobs(line_id) WHERE status IN ('queued','running');
 CREATE INDEX IF NOT EXISTS jobs_queued ON jobs(created_at) WHERE status='queued';
+ALTER TABLE practice ADD COLUMN IF NOT EXISTS attempts integer NOT NULL DEFAULT 0;
+CREATE TABLE IF NOT EXISTS user_stats (
+ uid text PRIMARY KEY REFERENCES app_users(uid) ON DELETE CASCADE,
+ plays integer NOT NULL DEFAULT 0, recordings integer NOT NULL DEFAULT 0, ai_lines integer NOT NULL DEFAULT 0
+);
