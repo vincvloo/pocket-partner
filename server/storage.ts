@@ -95,14 +95,6 @@ export async function removeUnusedFiles() {
 export async function convertRecording(input: string) {
   const output = resolve(config.dataDir, 'tmp', randomUUID() + '.mp3');
   try {
-    const probe = await runFile(
-      'ffprobe',
-      ['-v', 'error', '-show_entries', 'format=duration', '-of', 'json', input],
-      { timeout: 10000, maxBuffer: 65536 },
-    );
-    const seconds = Number(JSON.parse(probe.stdout).format?.duration);
-    if (!Number.isFinite(seconds) || seconds <= 0 || seconds > config.maxRecordingSeconds)
-      throw new AppError(400, 'Record a line of up to 3 minutes.');
     await runFile(
       'ffmpeg',
       [
@@ -123,13 +115,23 @@ export async function convertRecording(input: string) {
         '-b:a',
         '96k',
         '-t',
-        '180',
+        String(config.maxRecordingSeconds),
         '-threads',
         '1',
         output,
       ],
       { timeout: 45000, maxBuffer: 65536 },
     );
+    // Probe the converted file, not the recorder's raw input: a live MediaRecorder
+    // capture has no finalized duration in its own container metadata.
+    const probe = await runFile(
+      'ffprobe',
+      ['-v', 'error', '-show_entries', 'format=duration', '-of', 'json', output],
+      { timeout: 10000, maxBuffer: 65536 },
+    );
+    const seconds = Number(JSON.parse(probe.stdout).format?.duration);
+    if (!Number.isFinite(seconds) || seconds <= 0)
+      throw new AppError(400, 'Record a line of up to 3 minutes.');
     if ((await stat(output)).size > config.maxUpload)
       throw new AppError(413, 'The recording is too large.');
     return await readFile(output);
