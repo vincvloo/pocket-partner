@@ -22,6 +22,7 @@ import {
 import { parseScript, colorFor } from './parser.js';
 import { voices } from './voices.js';
 import { enqueueGeneration, budgetFor } from './generation.js';
+import { statsFor, recordLineRecording } from './achievements.js';
 const id = z.string().uuid();
 const title = z.string().trim().min(1).max(160);
 const name = z.string().trim().min(1).max(60);
@@ -136,6 +137,7 @@ export function createApp(auth: RequestHandler = authenticate) {
     ]);
     res.json({ user: users[0], groups });
   });
+  api.get('/me/stats', async (req, res) => res.json(await statsFor(req.identity.uid)));
   api.patch('/me', async (req, res) => {
     const body = z.object({ name }).parse(req.body);
     await db.query('UPDATE app_users SET name=$2 WHERE uid=$1', [req.identity.uid, body.name]);
@@ -489,6 +491,22 @@ export function createApp(auth: RequestHandler = authenticate) {
     );
     res.json({ scene, lines, jobs });
   });
+  api.post('/scenes/:id/complete', async (req, res) => {
+    const body = z.object({ eventId: id }).parse(req.body);
+    const scene = await sceneAccess(id.parse(req.params.id), req.identity.uid);
+    await transaction(async (c) => {
+      const event = await c.query(
+        'INSERT INTO practice_events(id,uid) VALUES($1,$2) ON CONFLICT DO NOTHING RETURNING id',
+        [body.eventId, req.identity.uid],
+      );
+      if (!event.rowCount) return;
+      await c.query(
+        'INSERT INTO user_stats(uid,plays) VALUES($1,1) ON CONFLICT(uid) DO UPDATE SET plays=user_stats.plays+1',
+        [req.identity.uid],
+      );
+    });
+    res.json({ ok: true, sceneId: scene.id });
+  });
   api.patch('/lines/:id', async (req, res) => {
     const body = z
       .object({ text: z.string().min(1).max(12000), characterId: id.nullable() })
@@ -615,6 +633,7 @@ export function createApp(auth: RequestHandler = authenticate) {
         );
         if (!result.rowCount)
           throw new AppError(409, 'The line changed while saving your recording.');
+        await recordLineRecording(req.identity.uid);
         if (line.audio_id) await removeUnusedIds([line.audio_id]);
         res.json({ audioId: fileId });
       } finally {
@@ -645,7 +664,7 @@ export function createApp(auth: RequestHandler = authenticate) {
       .object({
         eventId: id,
         lineId: id,
-        kind: z.enum(['repeat', 'hint', 'remembered', 'save', 'unsave']),
+        kind: z.enum(['repeat', 'hint', 'remembered', 'save', 'unsave', 'attempt']),
       })
       .parse(req.body);
     await lineAccess(body.lineId, req.identity.uid);
@@ -662,7 +681,7 @@ export function createApp(auth: RequestHandler = authenticate) {
       const delta =
         body.kind === 'hint' ? 3 : body.kind === 'repeat' ? 2 : body.kind === 'remembered' ? -2 : 0;
       await c.query(
-        `UPDATE practice SET score=greatest(0,score+$3),repeats=repeats+$4,hints=hints+$5,remembered=remembered+$6,saved=coalesce($7,saved),updated_at=now() WHERE uid=$1 AND line_id=$2`,
+        `UPDATE practice SET score=greatest(0,score+$3),repeats=repeats+$4,hints=hints+$5,remembered=remembered+$6,saved=coalesce($7,saved),attempts=attempts+$8,updated_at=now() WHERE uid=$1 AND line_id=$2`,
         [
           req.identity.uid,
           body.lineId,
@@ -671,6 +690,7 @@ export function createApp(auth: RequestHandler = authenticate) {
           body.kind === 'hint' ? 1 : 0,
           body.kind === 'remembered' ? 1 : 0,
           body.kind === 'save' ? true : body.kind === 'unsave' ? false : null,
+          body.kind === 'attempt' ? 1 : 0,
         ],
       );
     });

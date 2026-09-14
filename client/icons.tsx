@@ -38,6 +38,7 @@ const icons: Record<string, string> = {
   info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7h.01"/>',
   stop: '<rect x="6" y="6" width="12" height="12" rx="1"/>',
   trash: '<path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7"/>',
+  award: '<circle cx="12" cy="8" r="6"/><path d="m15.5 13 1.5 9-5-3-5 3 1.5-9"/>',
 };
 
 export function Icon({ name }: { name: string }) {

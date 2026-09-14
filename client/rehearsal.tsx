@@ -49,6 +49,9 @@ export function Rehearsal({ ctx }: { ctx: Context }) {
     setLoading(false);
   }
   function advance() {
+    if (line && isMine && isLive) ctx.act(() => ctx.recordPractice(line.id, 'attempt'));
+    if (!loop && cursor === lines.length - 1)
+      ctx.act(() => ctx.recordSceneComplete(ctx.scene!.scene.id));
     stop();
     setPaused(false);
     setHint(false);

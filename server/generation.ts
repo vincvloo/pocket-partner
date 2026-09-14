@@ -106,6 +106,7 @@ export async function finishGeneration(
   job: {
     id: string;
     line_id: string;
+    requested_by: string;
     payload: { revision: number; voiceId: string; delivery: string };
   },
   fileId: string,
@@ -115,6 +116,11 @@ export async function finishGeneration(
       "UPDATE lines l SET audio_id=$1,audio_kind='ai',updated_at=now() FROM characters c WHERE l.id=$2 AND l.revision=$3 AND l.audio_kind IS DISTINCT FROM 'recorded' AND c.id=l.character_id AND c.voice_id=$4 AND c.delivery=$5",
       [fileId, job.line_id, job.payload.revision, job.payload.voiceId, job.payload.delivery],
     );
+    if (result.rowCount)
+      await c.query(
+        'INSERT INTO user_stats(uid,ai_lines) VALUES($1,1) ON CONFLICT(uid) DO UPDATE SET ai_lines=user_stats.ai_lines+1',
+        [job.requested_by],
+      );
     await c.query('UPDATE jobs SET status=$2,error=$3,finished_at=now() WHERE id=$1', [
       job.id,
       result.rowCount ? 'done' : 'cancelled',
